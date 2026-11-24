@@ -1,0 +1,38 @@
+name: Production API Smoke Check
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17,47 * * * *"
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Verify health and price freshness
+        env:
+          BASE_URL: https://tightnet-api.il-michael-ma.workers.dev
+        run: |
+          python3 - <<'PY'
+          import json, os, sys, time, urllib.request, datetime
+          base = os.environ["BASE_URL"].rstrip("/")
+          def get(path):
+              with urllib.request.urlopen(base + path, timeout=15) as response:
+                  assert response.status == 200, (path, response.status)
+                  return json.load(response)
+          health = get("/health")
+          assert health.get("status") == "online" and health.get("database") is True, health
+          prices = get("/prices")
+          assets = {a["symbol"]: a for a in prices.get("assets", [])}
+          now = datetime.datetime.now(datetime.timezone.utc)
+          for symbol in ("BTC", "ETH", "SOL"):
+              assert symbol in assets, f"Missing {symbol} snapshot"
+              row = assets[symbol]
+              assert float(row["price_usd"]) > 0, f"Invalid {symbol} price"
+              updated = datetime.datetime.fromisoformat(row["updated_at"].replace("Z", "+00:00"))
+              age = (now - updated).total_seconds()
+              assert -120 <= age <= 900, f"Stale {symbol}: {age:.0f}s old"
+              print(f"{symbol}: price positive, age={age:.0f}s, source={row.get('source')}")
+          print("PASS: live health, D1 and 3 fresh market snapshots")
+          PY

@@ -33,7 +33,7 @@ export default {
   }
 };
 
-async function updatePrices(env) {
+export async function updatePrices(env) {
   if (!env.DB) throw new Error("Missing D1 DB binding");
   const results = await Promise.allSettled(Object.entries(ASSETS).map(async ([symbol, pair]) => {
     const response = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${encodeURIComponent(pair)}`, {

@@ -17,10 +17,16 @@ jobs:
           python3 - <<'PY'
           import json, os, sys, time, urllib.request, datetime
           base = os.environ["BASE_URL"].rstrip("/")
+          import urllib.error
           def get(path):
-              with urllib.request.urlopen(base + path, timeout=15) as response:
-                  assert response.status == 200, (path, response.status)
-                  return json.load(response)
+              req = urllib.request.Request(base + path, headers={"User-Agent": "TIGHTNET-smoke/1.0 (+github-actions)", "Accept": "application/json"})
+              try:
+                  with urllib.request.urlopen(req, timeout=15) as response:
+                      assert response.status == 200, (path, response.status)
+                      return json.load(response)
+              except urllib.error.HTTPError as e:
+                  body = e.read()[:400].decode("utf-8", "replace")
+                  sys.exit(f"FAIL {path}: HTTP {e.code} cf-ray={e.headers.get('cf-ray')} server={e.headers.get('server')} body={body!r}")
           health = get("/health")
           assert health.get("status") == "online" and health.get("database") is True, health
           prices = get("/prices")
@@ -33,6 +39,6 @@ jobs:
               updated = datetime.datetime.fromisoformat(row["updated_at"].replace("Z", "+00:00"))
               age = (now - updated).total_seconds()
               assert -120 <= age <= 900, f"Stale {symbol}: {age:.0f}s old"
-              print(f"{symbol}: price positive, age={age:.0f}s, source={row.get('source')}")
+              print(f"{symbol}: price={float(row['price_usd']):.2f} age={age:.0f}s source={row.get('source')}")
           print("PASS: live health, D1 and 3 fresh market snapshots")
           PY
